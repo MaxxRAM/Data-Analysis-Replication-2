@@ -1,0 +1,300 @@
+---
+title: "Data Analysis Replication"
+author: "Maxximus Ramsaroop"
+date: "2024-03-20"
+output: html_document
+---
+Open Libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gridExtra)
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(infer)
+library(lme4)
+library(mosaic)
+library(recolorize)
+```
+
+INTRODUCTION AND FRAMING
+
+```{r}
+# "Seasonal Change in male reproductive investment of a fish", (Fujimoto et al 2021) describes the northern medaka (Oryzias sakaizumii) and its reproductive seasonality. This paper establishes that northern medakas express seasonal changes in body size, gonad weight, and sexually dimorphic traits between May to July. Fujimoto et al then analyzes the relationship between the size of these sexually dimorphic traits in males (both relative and absolute) and finds that larger males or males with greater sexual dimorphism are preferred by females and have larger testis on average. The group collected data on body size, gonad weight, and other morphological traits from individuals in a population near Aomori, Japan. Behavioral data, male mating success, fertilization rate, and other measures were collected via mate choice assays. Morphological data was collected both in 2004 and 2013 from the same population. Several statistical methods were used including ANOVA, GLM, GLMM, and structural equation modeling (SEM). 
+```
+
+FIGURE 2. 
+```{r}
+# Figure 2: The monthly distribution of body weight in both females and males is presented in fig(2a). The monthly distribution of female GSI (gonad somatic index) is presented in fig (2b). The monthly distribution of male GSI is presented in fig (3b). 
+
+# I found no specific statistical tests performed on these data presented in the paper. These figures are intended to showcase that body weight in both males and females does not show any significant variance as a function of the seasons. Male and female GSI however, show significant differences between certain months, suggesting that there is a level of reproductive seasonality in this species. The reproductive season for both females and males appears to fall between May and mid July, with a sharp decline in GSI thereafter. 
+
+Figure2a<- readImage("images/Figure 2a.PNG")
+Figure2b<- readImage("images/Figure 2b.PNG")
+Figure2c<- readImage("images/Figure 2c.PNG")
+plotImageArray(Figure2a, main = "Figure 2a") # plot of figure 2a
+plotImageArray(Figure2b, main = "Figure 2b") # plot of figure 2b
+plotImageArray(Figure2c, main = "Figure 2c") # plot of figure 2c
+```
+
+READ IN DATA & ORGANIZE
+```{r}
+d<- read_csv("https://raw.githubusercontent.com/MaxxRAM/Data-Analysis-Replication/main/data/aomoriGSI_data2004.csv", col_names = T) # reads in the csv with all fish data
+head(d)
+d<- d |> filter(SLmm > 20) # filters out all fish that are smaller than 20mm in standard length (they are not adults according to the methods)
+zd<- d|> filter(zscore(BW_fol) < 3 | zscore(BW_fol) < -3) # I created this filter to remove outliers in the data
+
+mdf <- filter(d, sex == "m") # make male only DF
+mzd<- mdf|> filter(zscore(BW_fol) < 3 | zscore(BW_fol) < -3)
+fdf <- filter(d, sex == "f") # make female only DF
+fzd<- fdf|> filter(zscore(BW_fol) < 3 | zscore(BW_fol) < -3)
+```
+
+FIG 2A: Plot Bodyweight (g) by month
+```{r}
+(graph2a<- ggplot(data = d, aes(x = month, y = BW_fol)) + xlab("Month") + ylab("Body Weight (g)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2a")
+ # while this graph looks right, it does not exactly match 2a
+
+# I could not find any explanation in the methods for removal of outliers or any other winnowing of the data, but given that I noticed outliers in the boxplot I created a zscore filtered dataframe to remove any females with inordinately high or low body weights and created a second graph
+```
+
+2ND MODEL OF 2A: remove outliers (z score > 3 or < -3)
+```{r}
+(graph2a.1<- ggplot(data = zd, aes(x = month, y = BW_fol)) + xlab("Month") + ylab("Body Weight (g)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2a")
+
+
+# here I created another graph for 2a that looks more similar to figure 2a, but does not match the size of the error bars and appears slightly deviated from the range of month 7
+
+# I suspect this may be due to some missing data, a different method for determining outliers, or post hoc changes to the data that may have not gotten into the final dataset. Regardless, nothing in the figure seems to explain it or any method used to detect outliers. Additionally, the figure summary mentions "Circles and triangles represent individual females and males, respectively", but there are no circles or triangles in the figure. 
+```
+
+3RD MODEL OF 2A: include outliers
+```{r}
+(graph2a.2<- ggplot(data = d, aes(x = month, y = BW_fol)) + xlab("Month") + ylab("Body Weight (g)") + geom_boxplot(na.rm = T, aes(group = month), coef = Inf) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2a")
+ # in this plot I used coef = inf in my function to include outliers in the standard error bars of my histogram. Again this does not appear to perfectly match their figure.  I am therefore inclined to believe that they must have used a fuller data set that includes other values that could account for the differences in our results. 
+```
+FIG 2B: Plot Female GSI by month
+```{r}
+(graph2b<- ggplot(data = fdf, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Ovary weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2b")
+ # here I created figure 2b which plots female GSI by month. When plotted plainly with the given data, I could not achieve the same distribution that appears in the actual figure 2b. In the next code I eliminate any outliers with a z score of 3 or greater, but still could not achieve the expected distribution in figure 2b.
+```
+
+2ND MODEL OF 2B: remove outliers (z score > 3 or < -3)
+```{r}
+(graph2b.1<- ggplot(data = fzd, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Ovary weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2b")
+ # again I expect that this may be due to missing data or somehow ignoring outliers in the boxplots
+```
+
+3RD MODEL OF 2B: include outliers
+```{r}
+(graph2b.2<- ggplot(data = fdf, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Ovary weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), coef = Inf) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2b")
+# this model ignores outliers in their distribution and still does not entirely match the look of their model.
+# however it is worth noting that month 7 appears to deviate the most from the original figure 2b or 2a, thus there may be a lack of data in this month category. 
+```
+
+FIG 2C: Plot Male GSI by month
+```{r}
+(graph2c<- ggplot(data = mdf, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Testis weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2c")
+
+# this plot again has outliers and I will create subsequent models that either remove outliers with a z score of >3 or <-3 or include outliers as a part of the standard error bar. 
+```
+
+
+2ND MODEL OF 2C: remove outliers (z score > 3 or < -3)
+```{r}
+(graph2c.1<- ggplot(data = mzd, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Testis weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA) + scale_x_continuous(breaks = 1:12)) + ggtitle(label = "Figure 2c")
+```
+
+
+3RD MODEL OF 2C: include outliers
+```{r}
+(graph2c.2<- ggplot(data = fdf, aes(x = month, y = GSI)) + xlab("Month") + ylab("100 * (Testis weight / Body weight)") + geom_boxplot(na.rm = T, aes(group = month), coef = Inf) + scale_x_continuous(breaks = 1:12))
+```
+INTERPRETATIONS OF THE FIGURE, COMMENTS, AND ALL OF THE RELAVENT FIGURES IN LINE
+```{r}
+# Figure 2 as a whole aims to demonstrate that body weight remains consistent across months of collection whereas GSI in both males and females increased during months 5, 6, and 7, then sharply decreased between month 7 and month 8. Despite the challenges to perfectly match their figures, this trend is still demonstrated well in the replicated figures. This would demonstrate that both female and male GSI increase between months 5-7, and this is not a function of decreased or increased GSI. This is indicative of reproductive seasonality, in which the gonads are enlarged between months 5-7, and the reproductive season ends between month 7 and 8. 
+(grid.arrange(graph2a, graph2b, graph2c, nrow = 2)) # full plot!
+```
+
+FIGURE 3
+```{r}
+# Figure 3: Seasonal change in the sexually dimorphic fins, anal fin length in 2004 collection (a)and 2013 collection (b), and dorsal fin length in 2013 collection (c). The colors in the gray and white box represented the males and females, respectively.
+
+# Details on the methods that I will be simulating: "To assess seasonal change in anal and dorsal fin lengths, we calculated AFL/SL and DFL/SL. Preliminary analysis of fin length showed that allometric scaling between SL and fin length did not change throughout the season (supporting information in Fig. S1). Both AFL/SL and DFL/SL were suitable indices for adjusting for individual size difference. The significance of each variable was tested using the F-test in the analysis of variance (ANOVA), which considered sex, collected month and the interaction between sex and month as explanatory variables. The analysis was performed separately for the 2004 and 2013 datasets. If the male reproductive investment changes seasonally, the correlation between testis weight (TW) and AFL in males may vary between reproductive and nonreproductive seasons."
+
+Figure3a<- readImage("images/Figure 3a.PNG")
+Figure3b<- readImage("images/Figure 3b.PNG")
+Figure3c<- readImage("images/Figure 3c.PNG")
+
+plotImageArray(Figure3a, main = "Figure 3a") # plot of figure 3a
+plotImageArray(Figure3b, main = "Figure 3b") # plot of figure 3b
+plotImageArray(Figure3c, main = "Figure 3c") # plot of figure 3c
+```
+
+READ IN DATAFILES & ORGANIZE
+```{r}
+d2013 <- read_csv("https://raw.githubusercontent.com/MaxxRAM/Data-Analysis-Replication/main/data/SLvsFin_Data2013.csv", col_names = T)
+head(d2013)
+d2013 <- d2013 |>
+  select(sex, SL, AFL, DFL, month) # Isolate out only the columns of interest
+head(d2013)
+```
+2013 ANOVA ANALYSIS OF AFL & DFL BY MONTH, BY SEX, AND THE MONTH:SEX INTERACTION
+```{r}
+AFLSL<- d2013$AFL / d2013$SL # creates the ratio of anal fin length to standard length
+DFLSL<- d2013$DFL / d2013$SL # creates ratio of dorsal fin length to standard length
+
+(m1<- aov(data = d2013, AFLSL ~ sex * as.factor(d2013$month))) 
+(m2<- aov(data = d2013, DFLSL ~ sex * as.factor(d2013$month)))
+(summary(m1))
+(summary(m2))
+
+# above I perform an ANOVA test on the relationship between sex, month of collection, and any interaction between the two with AFL and DFL. I find that both sex, month, and their interaction together significantly explain variance in both AFL & DFL. All p values are < 0.01 and maintain high F values, with sex carrying a very large F value of 1000+ in both AFL & DFL. 
+
+# The paper records these values: 2013 collection (Sex: F1, 293 = 1115.34, P <0.001; Month: F4, 293 = 29.74, P < 0.001; Sex × Month: F4, 293 =46.86, P < 0.001, Fig. 3b).DFL/SLshowedthesametrend as AFL (Sex: F1, 292 = 1677.26, P < 0.001; Month: F4, 293 = 25.45, P < 0.001; Sex × Month: F4, 293 = 44.88, P <0.001, Fig. 3c).
+
+# while I did not find the exact same F values as the paper, all F values were still significant to the same threshold as they were maintained in the paper. 
+```
+2004 ANOVA ANALYSIS OF AFL/SL BY MONTH, BY SEX, AND MONTH:SEX INTERACTION
+```{r}
+d2004 <- read_csv("https://raw.githubusercontent.com/MaxxRAM/Data-Analysis-Replication/main/data/aomoriGSI_data2004.csv", col_names = T)
+head(d2004)
+d2004 <- d2004 |>
+  dplyr::filter(SLmm > 20) |>
+  select(sex, SLmm, AFLmm, month) # Isolate out only the columns of interest
+head(d2004)
+
+AFLSL04<- d2004$AFLmm / d2004$SLmm
+
+(m3<- aov(data = d2004, AFLSL04 ~ sex * as.factor(d2004$month)))
+(summary(m3))
+# Here I run an ANOVA on AFL ~ sex + month + interaction between sex and month for the data from 2004. I find that p values for sex, month, and sex:month are significant and thus explain at least some of the variance in AFL. 
+
+# The paper records these values: (Sex: F1 265 = 388.70, P < 0.001; Month: F8, 265 =5.457, P <0.001; Sex × Month: F 8, 265 = 10.742, P <0.001, Fig. 3a)
+
+# while I did not find the exact same F values as the paper, all F values were still significant to the same threshold that the paper described. 
+```
+FIGURE 3 REPLICATION
+
+FIGURE 3A: 2004 AFL/SL BY MONTH IN FEMALES AND MALES
+```{r}
+# read in 2004 data & separate by sex
+d2004 <- read_csv("https://raw.githubusercontent.com/MaxxRAM/Data-Analysis-Replication/main/data/aomoriGSI_data2004.csv", col_names = T)
+d2004 <- d2004 |> dplyr::filter(SLmm > 20)
+head(d2004)
+
+fd2004 <- filter(d2004, sex == "f") # filter by sex
+md2004 <- filter(d2004, sex == "m")
+
+# AFL / SL Female
+fig3aF<- ggplot(data = fd2004, aes(y = AFLmm/SLmm, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "white") + scale_x_continuous(breaks = 1:12) + xlab("Month in 2004") + ylab("Anal fin length / Standard length") + coord_cartesian(ylim =c(0.1, 0.25)) # female boxplots displayed in white
+
+# AFL / SL Male
+fig3aM<- ggplot(data = md2004, aes(y = AFLmm/SLmm, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "gray") + scale_x_continuous(breaks = 1:12) + xlab("Month") + ylab("Anal fin length / Standard length") + coord_cartesian(ylim =c(0.1, 0.25)) # male boxplots displayed in grey
+
+combined_plot3a <- fig3aF +
+  geom_boxplot(data = md2004, aes(y = AFLmm/SLmm, x = month, group = month),
+  outlier.shape = NA, color = "black", fill = "gray") + ggtitle(label = "Figure 3a")
+  # only way I could figure out how to overlay on the same axis
+
+# Display the combined plot 
+print(combined_plot3a)
+
+
+```
+
+FIGURE 3B: 2013 AFL/SL by Month in Males & Females
+```{r}
+
+fd2013 <- filter(d2013, sex == "f") # filter by sex
+md2013 <- filter(d2013, sex == "m")
+
+# AFL / SL Female
+fig3bF<- ggplot(data = fd2013, aes(y = AFL/SL, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "white") + scale_x_continuous(breaks = 1:12) + xlab("Month in 2013") + ylab("Anal fin length / Standard length")
+
+# AFL / SL Male
+fig3bM<- ggplot(data = md2013, aes(y = AFL/SL, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "gray") + scale_x_continuous(breaks = 1:12) + xlab("Month") + ylab("Anal fin length / Standard length") + coord_cartesian(ylim =c(0.1, 0.25))
+
+#combined plot overlaps AFL/SL Female and AFL/SL male to create the full figure 3b
+combined_plot3b <- fig3bF +
+  geom_boxplot(na.rm = T, data = md2013, aes(y = AFL/SL, x = month, group = month),
+  outlier.shape = NA, color = "black", fill = "gray") + coord_cartesian(ylim =c(0.1, 0.25), xlim =c(3,11)) + ggtitle(label = "Figure 3b")
+
+# Display the combined plot 
+print(combined_plot3b)
+
+```
+
+FIGURE 3C: 2013 DFL/SL by Month in Males and Females
+```{r}
+# DFL / SL Female
+fig3cF<- ggplot(data = fd2013, aes(y = DFL/SL, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "white") + scale_x_continuous(breaks = 1:12) + xlab("Month in 2013") + ylab("Dorsal fin length / Standard length")
+
+# DFL / SL Male
+fig3cM<- ggplot(data = md2013, aes(y = DFL/SL, x = month)) + geom_boxplot(na.rm = T, aes(group = month), outlier.shape = NA, color = "black", fill = "gray") + scale_x_continuous(breaks = 1:12) + xlab("Month") + ylab("Dorsal fin length / Standard length") + coord_cartesian(ylim =c(0.1, 0.25))
+
+#combined plot overlaps AFL/SL Female and AFL/SL male to create the full figure 3b
+combined_plot3c <- fig3cF +
+  geom_boxplot(na.rm = T, data = md2013, aes(y = DFL/SL, x = month, group = month),
+  outlier.shape = NA, color = "black", fill = "gray") + coord_cartesian(ylim =c(0.1, 0.25), xlim =c(3,11)) + ggtitle(label = "Figure 3C")
+
+
+# Display the combined plot 
+print(combined_plot3c)
+```
+
+
+INTERPRETATION OF THE FIGURE, COMMENTS, AND FULLY ARRANGED PLOTS
+```{r}
+# data on AFL/SL and DFL/SL for month 8 is missing from the 2013 dataset, but is presented in figure 3b. I am thus unable to make a perfect replicatio of their figure. This would likely also account for differences between my figure and the given figures for figure 2a, 2b, and 2c. This would also account for different F values found in the ANOVA test on AFL and DFL in 2013. However, the incomplete data still presents the same general findings as what is stated in the paper. AFL and DFL appears to grow significantly larger than that of females during the reproductive months (4-8), and appears to wax and wane as the season progresses. 
+grid.arrange(combined_plot3a, combined_plot3b, combined_plot3c, ncol = 1)
+```
+
+
+*******************************************************************************
+TABLE 1. 
+```{r}
+# Table 1: presents the results of a Wald test of several GLM models testing whether the number of reproductions a male engages in is dependent on SL, AFL, DFL, AFL/SL, or DFL/SL. 
+
+FigureT1<- readImage("images/Table 1.PNG")
+
+plotImageArray(FigureT1, main = "Table 1")
+```
+READ IN DATA & ORGANIZE
+```{r}
+dt1 <- read.csv("https://raw.githubusercontent.com/MaxxRAM/Data-Analysis-Replication/main/data/mateNumberAndfertilizationRate.csv")
+head(dt1)
+```
+
+TABLE 1: Create GLM models for number of reproductions dependent on SL, AFL, DFL, AFLratio & DFLratio
+```{r}
+t1m1<- glm(data = dt1, reproduct ~ SL, family = binomial) #I am using the glm function from {lme4} where I can test whether or not a male reproduced as a binomial against SL, AFL, DFL, AFLratio, and DFLratio
+t1m2<- glm(data = dt1, reproduct ~ AFL, family = binomial)
+t1m3<- glm(data = dt1, reproduct ~ DFL, family = binomial)
+t1m4<- glm(data = dt1, reproduct ~ AFLratio, family = binomial)
+t1m5<- glm(data = dt1, reproduct ~ DFLratio, family = binomial)
+
+(m1<- summary(t1m1)) #summary provides a wald test for each model
+(m2<- summary(t1m2))
+(m3<- summary(t1m3))
+(m4<- summary(t1m4))
+(m5<- summary(t1m5))
+```
+
+INTERPRETATION OF THE DATA AND FULL TABLE
+```{r}
+# The summary of each test provides the same slope, SE, Z, and P values as those found in table 1. This supports their findings and argument significantly across all values that AFL, DL, AFL/SL and DFL/SL significantly predict some of the variance in the numbers of reproductions a male can acquire. 
+
+table1<- tibble(Character= c("Standard Length (SL)", "Anal Fin Length (AFL)", "Dorsal Fin Length (DFL)", "AFL/SL", "DFL/SL"), Slope =c(m1$coefficients[2],m2$coefficients[2],m3$coefficients[2],m4$coefficients[2],m5$coefficients[2]), SE= c(m1$coefficients[4],m2$coefficients[4],m3$coefficients[4],m4$coefficients[4],m5$coefficients[4]), Z= c(m1$coefficients[6],m2$coefficients[6],m3$coefficients[6],m4$coefficients[6],m5$coefficients[6]), P=c(m1$coefficients[8],m2$coefficients[8],m3$coefficients[8],m4$coefficients[8],m5$coefficients[8]))
+
+print(table1) # complete table 1 in the same format as the paper! Could not replicate the table graphics as they appear to have been performed outside of r
+```
+
+DISCUSSION
+```{r}
+# The replication attempt was relatively very successful. Using all of the open access data, I was able to replicate the ANOVA used for figure 3, proving that both sex and month of the year were significant predictors of anal fin length and dorsal fin length. While I did not achieve identical P values and the data they used for figures 2 and 3 were likely more complete datasets, the provided dataset still presented p values for the ANOVA in figure 3 that were below the claimed threshold of 0.01. I replicated the GLM used for table 1 identically, getting the same B1 coefficients, Standard error, Z test, and P values. Both analyses in figure 3 and Table 1 are validated to the extent that is relevant for the paper's conclusions which are: males express seasonal sexual dimorphism and, the number of successful reproductions a male can acquire is dependent on his standard length and the length of his sexually dimorphic features (both relative and absolute). 
+
+# Originally, I thought my analysis differed from the paper's in that the paper seemed to ignore outliers or otherwise account for them. This could still be true, however, it is apparent the open access datafiles were not complete to the extent that files used in the paper were. Generally, my figures were able to model the same relationships that were presented in the papers, with some differences. This could likely be remedied by the open access r code the group provided. Perhaps there are notes and further clarification in their code that would solve issues in my own replication.
+```
+
